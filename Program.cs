@@ -14,7 +14,7 @@ app.MapPost("/api/volume/{v:int}", (int v) => { SystemControl.SetVolume(v); retu
 app.MapPost("/api/mute/{m:bool}", (bool m) => { SystemControl.SetMuted(m); return Results.Ok(); });
 
 app.MapPost("/api/playpause", () => { SystemControl.PlayPause(); return Results.Ok(); });
-app.MapPost("/api/key/{code:int}", (int code) => { SystemControl.KeyCode(code); return Results.Ok(); });
+app.MapPost("/api/key/{name}", (string name) => { SystemControl.Key(name); return Results.Ok(); });
 
 app.MapPost("/api/mouse/move", (MouseDelta d) => { SystemControl.MouseMoveBy(d.dx, d.dy); return Results.Ok(); });
 app.MapPost("/api/mouse/click/{button}", (string button) => { SystemControl.MouseClick(button); return Results.Ok(); });

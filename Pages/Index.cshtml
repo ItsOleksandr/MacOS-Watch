@@ -32,14 +32,14 @@ input[type=range] { width: 100%; height: 36px; }
   <button class="big" onclick="post('/api/playpause')">▶︎ / ❚❚</button>
 </div>
 <div class="row">
-  <button onclick="post('/api/key/123')">⏮ ←</button>
-  <button onclick="post('/api/key/124')">→ ⏭</button>
-  <button onclick="post('/api/key/53')">Esc</button>
-  <button onclick="post('/api/key/36')">Enter</button>
+  <button onclick="post('/api/key/arrow-left')">⏮ ←</button>
+  <button onclick="post('/api/key/arrow-right')">→ ⏭</button>
+  <button onclick="post('/api/key/esc')">Esc</button>
+  <button onclick="post('/api/key/return')">Enter</button>
 </div>
 <div class="row">
-  <button onclick="post('/api/key/3')">Fullscreen (F)</button>
-  <button onclick="post('/api/key/46')">Mute (M)</button>
+  <button onclick="post('/api/key/f')">Fullscreen (F)</button>
+  <button onclick="post('/api/key/m')">Mute (M)</button>
 </div>
 
 <h2>Volume <span id="volLabel" class="vol-val" style="float:right"></span></h2>

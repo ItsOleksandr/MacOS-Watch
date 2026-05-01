@@ -41,12 +41,17 @@ public static class SystemControl
 
     public static void SetMuted(bool m) => Osa($"set volume {(m ? "with" : "without")} output muted");
 
-    // macOS key codes via System Events
-    public static void KeyCode(int code) =>
-        Osa($"tell application \\\"System Events\\\" to key code {code}");
+    // Keypress via cliclick (avoids needing Accessibility on osascript)
+    // name examples: "space", "esc", "return", "arrow-left", "arrow-right", "f", "m"
+    public static void Key(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return;
+        // single character (letter / digit) → type it; otherwise treat as named key
+        var arg = name.Length == 1 ? $"t:{name}" : $"kp:{name}";
+        Run(Cliclick, arg);
+    }
 
-    public static void PlayPause() => KeyCode(49); // Space (works in most video players when focused)
-    public static void MediaPlayPause() => Run("/usr/bin/osascript", "-e \"tell application \\\"System Events\\\" to key code 49 using {}\"");
+    public static void PlayPause() => Key("space");
 
     // cliclick wrappers
     private const string Cliclick = "/usr/local/bin/cliclick";
