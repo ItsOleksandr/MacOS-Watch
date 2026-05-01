@@ -1,10 +1,151 @@
-﻿@page
-@model IndexModel
+@page
 @{
-    ViewData["Title"] = "Home page";
+    Layout = null;
+    ViewData["Title"] = "MacControl";
 }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+<title>MacControl</title>
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body { margin: 0; font-family: -apple-system, system-ui, sans-serif; background: #111; color: #eee; padding: 16px; max-width: 520px; margin: 0 auto; }
+h2 { font-size: 14px; text-transform: uppercase; opacity: .6; margin: 18px 0 8px; letter-spacing: .1em; }
+button { background: #2a2a2a; color: #eee; border: 1px solid #3a3a3a; border-radius: 10px; padding: 14px; font-size: 16px; flex: 1; cursor: pointer; touch-action: manipulation; }
+button:active { background: #3a3a3a; }
+.row { display: flex; gap: 8px; margin-bottom: 8px; }
+input[type=range] { width: 100%; height: 36px; }
+.vol { display: flex; align-items: center; gap: 12px; }
+.vol-val { width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+.pad { background: #1c1c1c; border: 1px solid #333; border-radius: 12px; height: 240px; touch-action: none; user-select: none; display: flex; align-items: center; justify-content: center; color: #555; }
+.big { font-size: 18px; padding: 18px; }
+</style>
+</head>
+<body>
+<h1 style="font-size:20px;margin:8px 0">MacControl</h1>
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<h2>Playback</h2>
+<div class="row">
+  <button class="big" onclick="post('/api/playpause')">▶︎ / ❚❚</button>
 </div>
+<div class="row">
+  <button onclick="post('/api/key/123')">⏮ ←</button>
+  <button onclick="post('/api/key/124')">→ ⏭</button>
+  <button onclick="post('/api/key/53')">Esc</button>
+  <button onclick="post('/api/key/36')">Enter</button>
+</div>
+<div class="row">
+  <button onclick="post('/api/key/3')">Fullscreen (F)</button>
+  <button onclick="post('/api/key/46')">Mute (M)</button>
+</div>
+
+<h2>Volume <span id="volLabel" class="vol-val" style="float:right"></span></h2>
+<div class="vol">
+  <input type="range" id="vol" min="0" max="100" value="50" />
+</div>
+<div class="row">
+  <button onclick="setVol(getVol()-5)">−5</button>
+  <button onclick="setVol(getVol()+5)">+5</button>
+  <button id="muteBtn" onclick="toggleMute()">Mute</button>
+</div>
+
+<h2>Trackpad</h2>
+<div class="pad" id="pad">drag to move · tap to click · two-finger scroll</div>
+<div class="row">
+  <button onclick="post('/api/mouse/click/left')">Left Click</button>
+  <button onclick="post('/api/mouse/click/right')">Right Click</button>
+  <button onclick="post('/api/mouse/click/double')">Double</button>
+</div>
+
+<script>
+const vol = document.getElementById('vol');
+const volLabel = document.getElementById('volLabel');
+const muteBtn = document.getElementById('muteBtn');
+let muted = false;
+
+function post(u, body) {
+  return fetch(u, { method:'POST', headers:{'Content-Type':'application/json'}, body: body?JSON.stringify(body):null });
+}
+function getVol(){ return parseInt(vol.value,10); }
+function setVol(v){ v=Math.max(0,Math.min(100,v)); vol.value=v; volLabel.textContent=v; post('/api/volume/'+v); }
+function toggleMute(){ muted=!muted; post('/api/mute/'+muted); muteBtn.textContent = muted?'Unmute':'Mute'; }
+
+let volTimer=null;
+vol.addEventListener('input', () => {
+  volLabel.textContent = vol.value;
+  clearTimeout(volTimer);
+  volTimer = setTimeout(()=>post('/api/volume/'+vol.value), 60);
+});
+
+fetch('/api/volume').then(r=>r.json()).then(d=>{
+  vol.value = d.volume; volLabel.textContent = d.volume;
+  muted = d.muted; muteBtn.textContent = muted?'Unmute':'Mute';
+});
+
+// Trackpad
+const pad = document.getElementById('pad');
+let last = null, moved = false, startT = 0, lastTap = 0, twoFinger = false, lastScrollY = 0;
+const SENS = 1.6;
+
+pad.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (e.touches.length === 2) {
+    twoFinger = true;
+    lastScrollY = (e.touches[0].clientY + e.touches[1].clientY)/2;
+    return;
+  }
+  twoFinger = false;
+  last = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  moved = false; startT = Date.now();
+}, {passive:false});
+
+pad.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (twoFinger && e.touches.length === 2) {
+    const y = (e.touches[0].clientY + e.touches[1].clientY)/2;
+    const dy = y - lastScrollY;
+    if (Math.abs(dy) > 6) {
+      post('/api/mouse/scroll/' + Math.round(-dy/8));
+      lastScrollY = y;
+    }
+    return;
+  }
+  if (!last) return;
+  const t = e.touches[0];
+  const dx = Math.round((t.clientX - last.x) * SENS);
+  const dy = Math.round((t.clientY - last.y) * SENS);
+  if (dx || dy) {
+    moved = true;
+    post('/api/mouse/move', { dx, dy });
+    last = { x: t.clientX, y: t.clientY };
+  }
+}, {passive:false});
+
+pad.addEventListener('touchend', e => {
+  e.preventDefault();
+  if (twoFinger) { twoFinger=false; return; }
+  const dt = Date.now() - startT;
+  if (!moved && dt < 250) {
+    const now = Date.now();
+    if (now - lastTap < 300) post('/api/mouse/click/double');
+    else post('/api/mouse/click/left');
+    lastTap = now;
+  }
+  last = null;
+}, {passive:false});
+
+// Mouse fallback for desktop
+let dragging=false, mlast=null;
+pad.addEventListener('mousedown', e => { dragging=true; mlast={x:e.clientX,y:e.clientY}; moved=false; });
+pad.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  const dx = Math.round((e.clientX-mlast.x)*SENS), dy = Math.round((e.clientY-mlast.y)*SENS);
+  if (dx||dy){ moved=true; post('/api/mouse/move',{dx,dy}); mlast={x:e.clientX,y:e.clientY}; }
+});
+pad.addEventListener('mouseup', () => { if (dragging && !moved) post('/api/mouse/click/left'); dragging=false; });
+</script>
+</body>
+</html>

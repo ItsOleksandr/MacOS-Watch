@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.maccontrol</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__BIN__</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>ASPNETCORE_URLS</key>
+        <string>http://0.0.0.0:5050</string>
+        <key>ASPNETCORE_ENVIRONMENT</key>
+        <string>Production</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>__DIR__</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>__DIR__/maccontrol.log</string>
+    <key>StandardErrorPath</key>
+    <string>__DIR__/maccontrol.err.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>
