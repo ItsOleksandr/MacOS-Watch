@@ -2,7 +2,6 @@ using MacControl;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorPages();
-builder.WebHost.UseUrls("http://0.0.0.0:5050");
 
 var app = builder.Build();
 app.UseStaticFiles();

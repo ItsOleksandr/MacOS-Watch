@@ -4,11 +4,6 @@
         <TargetFramework>net8.0</TargetFramework>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
-        <RuntimeIdentifier>osx-arm64</RuntimeIdentifier>
-        <PublishDir>$(MSBuildProjectDirectory)/publish</PublishDir>
-        <PublishSingleFile>true</PublishSingleFile>
-        <SelfContained>true</SelfContained>
-        <PublishTrimmed>false</PublishTrimmed>
     </PropertyGroup>
 
 </Project>

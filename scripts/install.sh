@@ -23,9 +23,10 @@ sed -e "s|__BIN__|$INSTALL_DIR/MacControl|g" \
     -e "s|__DIR__|$INSTALL_DIR|g" \
     "$PROJECT_DIR/scripts/com.maccontrol.plist" > "$PLIST_DST"
 
-# 4. (Re)load LaunchAgent
-launchctl unload "$PLIST_DST" 2>/dev/null || true
-launchctl load   "$PLIST_DST"
+# 4. (Re)load LaunchAgent and force-restart so it picks up the new binary.
+# bootstrap is idempotent if already loaded; kickstart -k restarts the running job.
+launchctl bootstrap "gui/$UID" "$PLIST_DST" 2>/dev/null || true
+launchctl kickstart -k "gui/$UID/$PLIST_LABEL"
 
 echo ""
 echo "✓ Installed and started."

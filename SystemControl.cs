@@ -18,6 +18,20 @@ public static class SystemControl
         p.WaitForExit(5000);
         return (p.ExitCode, so, se);
     }
+    
+    public static void RunDetached(string file, string args)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = file,
+            Arguments = args,
+            UseShellExecute = false,
+            RedirectStandardOutput = false,
+            RedirectStandardError = false,
+            CreateNoWindow = true,
+        };
+        Process.Start(psi);
+    }
 
     public static void Osa(string script) => Run("/usr/bin/osascript", $"-e \"{script.Replace("\"", "\\\"")}\"");
 
@@ -48,10 +62,11 @@ public static class SystemControl
         if (string.IsNullOrWhiteSpace(name)) return;
         // single character (letter / digit) → type it; otherwise treat as named key
         var arg = name.Length == 1 ? $"t:{name}" : $"kp:{name}";
-        Run(Cliclick, arg);
+        RunDetached(Cliclick, arg);
     }
 
-    public static void PlayPause() => Key("space");
+    // Use the media key — works regardless of which app is focused.
+    public static void PlayPause() => RunDetached(Cliclick, "kp:play-pause");
 
     // cliclick wrappers
     private const string Cliclick = "/usr/local/bin/cliclick";
@@ -70,18 +85,18 @@ public static class SystemControl
         var (x, y) = GetMousePos();
         var nx = Math.Max(0, x + dx);
         var ny = Math.Max(0, y + dy);
-        Run(Cliclick, $"m:{nx},{ny}");
+        RunDetached(Cliclick, $"m:{nx},{ny}");
     }
 
     public static void MouseClick(string button = "left")
     {
         var cmd = button switch { "right" => "rc:.", "double" => "dc:.", _ => "c:." };
-        Run(Cliclick, cmd);
+        RunDetached(Cliclick, cmd);
     }
 
     public static void Scroll(int dy)
     {
         // cliclick wheel: positive = down
-        Run(Cliclick, $"w:0,{dy}");
+        RunDetached(Cliclick, $"w:0,{dy}");
     }
 }
