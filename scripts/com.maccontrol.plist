@@ -32,7 +32,14 @@
     <key>StandardErrorPath</key>
     <string>__DIR__/maccontrol.err.log</string>
 
+    <!-- Interactive, not Background: Background processes get CPU/IO throttled and
+         timer-coalesced by the scheduler, which shows up as laggy mouse control. -->
     <key>ProcessType</key>
-    <string>Background</string>
+    <string>Interactive</string>
+
+    <!-- No console window, no Dock icon: launchd starts the binary directly,
+         detached from any terminal. -->
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
 </dict>
 </plist>

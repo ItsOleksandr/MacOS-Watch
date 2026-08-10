@@ -55,48 +55,29 @@ public static class SystemControl
 
     public static void SetMuted(bool m) => Osa($"set volume {(m ? "with" : "without")} output muted");
 
-    // Keypress via cliclick (avoids needing Accessibility on osascript)
-    // name examples: "space", "esc", "return", "arrow-left", "arrow-right", "f", "m"
+    // Keypress via native CGEvent — no subprocess, no race, posts in microseconds.
+    // Falls back to cliclick if the key isn't in the native map (e.g. exotic keys).
     public static void Key(string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return;
-        // single character (letter / digit) → type it; otherwise treat as named key
+        if (NativeInput.KeyTap(name)) return;
         var arg = name.Length == 1 ? $"t:{name}" : $"kp:{name}";
         RunDetached(Cliclick, arg);
     }
 
-    // Use the media key — works regardless of which app is focused.
+    // Media key — keep cliclick (kp:play-pause). Synthesizing system-defined media
+    // events via CGEvent requires AppKit; cliclick handles it correctly and
+    // play-pause isn't rapid-tapped, so subprocess cost is fine here.
     public static void PlayPause() => RunDetached(Cliclick, "kp:play-pause");
 
     // cliclick wrappers
     private const string Cliclick = "/usr/local/bin/cliclick";
 
-    public static (int x, int y) GetMousePos()
-    {
-        var r = Run(Cliclick, "p:.");
-        var parts = r.stdout.Trim().Split(',');
-        if (parts.Length == 2 && int.TryParse(parts[0], out var x) && int.TryParse(parts[1], out var y))
-            return (x, y);
-        return (0, 0);
-    }
+    public static (int x, int y) GetMousePos() => NativeInput.GetMouse();
 
-    public static void MouseMoveBy(int dx, int dy)
-    {
-        var (x, y) = GetMousePos();
-        var nx = Math.Max(0, x + dx);
-        var ny = Math.Max(0, y + dy);
-        RunDetached(Cliclick, $"m:{nx},{ny}");
-    }
+    public static void MouseMoveBy(int dx, int dy) => NativeInput.MoveBy(dx, dy);
 
-    public static void MouseClick(string button = "left")
-    {
-        var cmd = button switch { "right" => "rc:.", "double" => "dc:.", _ => "c:." };
-        RunDetached(Cliclick, cmd);
-    }
+    public static void MouseClick(string button = "left") => NativeInput.Click(button);
 
-    public static void Scroll(int dy)
-    {
-        // cliclick wheel: positive = down
-        RunDetached(Cliclick, $"w:0,{dy}");
-    }
+    public static void Scroll(int dy) => NativeInput.Scroll(dy);
 }

@@ -5,3 +5,9 @@ riderModule.iml
 /_ReSharper.Caches/
 .idea/
 publish/
+
+# macOS
+.DS_Store
+
+# Runtime secret — the control token is generated at runtime, never commit it.
+token

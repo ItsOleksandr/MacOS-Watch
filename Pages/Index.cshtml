@@ -7,8 +7,19 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover" />
 <title>MacControl</title>
+@* Home-screen shortcut metadata. Chrome only builds a standalone WebAPK over
+   HTTPS, so on a plain-HTTP LAN the shortcut opens in the browser — but it still
+   picks up the icon and name from here instead of a screenshot and a URL. *@
+<link rel="manifest" href="~/manifest.webmanifest" />
+<link rel="icon" href="~/icons/icon-192.png" sizes="192x192" />
+<link rel="apple-touch-icon" href="~/icons/apple-touch-icon.png" />
+<meta name="theme-color" content="#111111" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="MacControl" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <style>
 :root { color-scheme: dark; }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -22,6 +33,15 @@ input[type=range] { width: 100%; height: 36px; }
 .vol-val { width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
 .pad { background: #1c1c1c; border: 1px solid #333; border-radius: 12px; height: 240px; touch-action: none; user-select: none; display: flex; align-items: center; justify-content: center; color: #555; }
 .big { font-size: 18px; padding: 18px; }
+details { margin-top: 22px; border: 1px solid #333; border-radius: 12px; background: #1c1c1c; }
+summary { padding: 14px; cursor: pointer; font-size: 14px; text-transform: uppercase; letter-spacing: .1em; opacity: .7; }
+.pair-body { padding: 0 14px 16px; text-align: center; }
+/* The library draws onto a white canvas; the padding keeps a quiet zone around
+   the code so scanners are not thrown off by the dark page behind it. */
+#qrcode { display: inline-block; background: #fff; padding: 12px; border-radius: 10px; line-height: 0; }
+#qrcode img, #qrcode canvas { display: block; }
+.pair-url { margin-top: 12px; font-size: 12px; word-break: break-all; opacity: .75; font-family: ui-monospace, monospace; }
+.pair-hint { margin-top: 8px; font-size: 12px; opacity: .5; }
 </style>
 </head>
 <body>
@@ -60,14 +80,34 @@ input[type=range] { width: 100%; height: 36px; }
   <button onclick="post('/api/mouse/click/double')">Double</button>
 </div>
 
+<details id="pair">
+  <summary>Open on phone</summary>
+  <div class="pair-body">
+    <div id="qrcode"></div>
+    <div class="pair-url" id="pairUrl"></div>
+    <div class="pair-hint" id="pairHint">Scan this with the phone camera, on the same network.</div>
+  </div>
+</details>
+
+<script src="~/js/qrcode.js"></script>
 <script>
+// --- Shared control token: read from ?token= on first open, then remembered.
+const params = new URLSearchParams(location.search);
+if (params.has('token')) {
+  localStorage.setItem('mc_token', params.get('token'));
+  // Strip it from the address bar so it does not linger in history or screenshots.
+  history.replaceState(null, '', location.pathname);
+}
+const TOKEN = localStorage.getItem('mc_token') || '';
+function authHeaders(extra) { return Object.assign({ 'X-MacControl-Token': TOKEN }, extra || {}); }
+
 const vol = document.getElementById('vol');
 const volLabel = document.getElementById('volLabel');
 const muteBtn = document.getElementById('muteBtn');
 let muted = false;
 
 function post(u, body) {
-  return fetch(u, { method:'POST', headers:{'Content-Type':'application/json'}, body: body?JSON.stringify(body):null });
+  return fetch(u, { method:'POST', headers: authHeaders(body?{'Content-Type':'application/json'}:{}), body: body?JSON.stringify(body):null });
 }
 function getVol(){ return parseInt(vol.value,10); }
 function setVol(v){ v=Math.max(0,Math.min(100,v)); vol.value=v; volLabel.textContent=v; post('/api/volume/'+v); }
@@ -80,15 +120,79 @@ vol.addEventListener('input', () => {
   volTimer = setTimeout(()=>post('/api/volume/'+vol.value), 60);
 });
 
-fetch('/api/volume').then(r=>r.json()).then(d=>{
+fetch('/api/volume', { headers: authHeaders() }).then(r => {
+  if (r.status === 401) {
+    document.body.insertAdjacentHTML('afterbegin',
+      '<div style="background:#5a1a1a;color:#ffd5d5;padding:12px;border-radius:8px;margin-bottom:12px">' +
+      '🔒 Missing or invalid token. Open this page using the link that ends in ' +
+      '<code>?token=…</code> (shown by the install script).</div>');
+    throw new Error('unauthorized');
+  }
+  return r.json();
+}).then(d => {
   vol.value = d.volume; volLabel.textContent = d.volume;
   muted = d.muted; muteBtn.textContent = muted?'Unmute':'Mute';
+  checkAccessibility();
+}).catch(() => {});
+
+// Build the pairing QR once the section is first opened — the address is asked
+// of the server rather than taken from location.host, because opening this page
+// on the Mac itself gives "localhost", which the phone cannot reach.
+var pairDone = false;
+document.getElementById('pair').addEventListener('toggle', function () {
+  if (!this.open || pairDone) return;
+  pairDone = true;
+  fetch('/api/lan-address', { headers: authHeaders() })
+    .then(r => r.json())
+    .then(d => {
+      var hint = document.getElementById('pairHint');
+      if (!d.address) { hint.textContent = 'No LAN address found — is this Mac on Wi-Fi?'; return; }
+      var url = 'http://' + d.address + ':' + (location.port || 80) + '/'
+              + (TOKEN ? '?token=' + encodeURIComponent(TOKEN) : '');
+      document.getElementById('pairUrl').textContent = url;
+      new QRCode(document.getElementById('qrcode'), {
+        text: url, width: 220, height: 220,
+        colorDark: '#000000', colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    })
+    .catch(() => { document.getElementById('pairHint').textContent = 'Could not read the LAN address.'; });
 });
+
+// Without the Accessibility grant the trackpad and keys post events that macOS
+// throws away: every request still returns 200, so the UI has to say so out loud.
+function checkAccessibility() {
+  fetch('/api/accessibility', { headers: authHeaders() })
+    .then(r => r.json())
+    .then(a => {
+      if (a.trusted) return;
+      document.body.insertAdjacentHTML('afterbegin',
+        '<div style="background:#5a4a1a;color:#ffe9b0;padding:12px;border-radius:8px;margin-bottom:12px;font-size:14px">' +
+        '⚠️ <b>Accessibility is off</b> — volume works, but the trackpad and keys do nothing.<br>' +
+        'On the Mac: System Settings → Privacy &amp; Security → Accessibility → enable <b>MacControl</b>.</div>');
+    })
+    .catch(() => {});
+}
 
 // Trackpad
 const pad = document.getElementById('pad');
 let last = null, moved = false, startT = 0, lastTap = 0, twoFinger = false, lastScrollY = 0;
 const SENS = 1.6;
+// Coalesce touchmove deltas: at 60Hz a finger drag fires ~60 events/sec, each
+// spawning a cliclick. Accumulate deltas and flush at most every ~33ms (~30Hz).
+let pendDx = 0, pendDy = 0, moveTimer = null;
+function flushMove(){
+  moveTimer = null;
+  if (pendDx || pendDy){
+    const dx = pendDx, dy = pendDy;
+    pendDx = 0; pendDy = 0;
+    post('/api/mouse/move', { dx, dy });
+  }
+}
+function queueMove(dx, dy){
+  pendDx += dx; pendDy += dy;
+  if (!moveTimer) moveTimer = setTimeout(flushMove, 33);
+}
 
 pad.addEventListener('touchstart', e => {
   e.preventDefault();
@@ -119,7 +223,7 @@ pad.addEventListener('touchmove', e => {
   const dy = Math.round((t.clientY - last.y) * SENS);
   if (dx || dy) {
     moved = true;
-    post('/api/mouse/move', { dx, dy });
+    queueMove(dx, dy);
     last = { x: t.clientX, y: t.clientY };
   }
 }, {passive:false});
@@ -143,7 +247,7 @@ pad.addEventListener('mousedown', e => { dragging=true; mlast={x:e.clientX,y:e.c
 pad.addEventListener('mousemove', e => {
   if (!dragging) return;
   const dx = Math.round((e.clientX-mlast.x)*SENS), dy = Math.round((e.clientY-mlast.y)*SENS);
-  if (dx||dy){ moved=true; post('/api/mouse/move',{dx,dy}); mlast={x:e.clientX,y:e.clientY}; }
+  if (dx||dy){ moved=true; queueMove(dx, dy); mlast={x:e.clientX,y:e.clientY}; }
 });
 pad.addEventListener('mouseup', () => { if (dragging && !moved) post('/api/mouse/click/left'); dragging=false; });
 </script>
