@@ -11,6 +11,35 @@ DOMAIN="gui/$UID"
 SERVICE="$DOMAIN/$PLIST_LABEL"
 PORT=5050
 
+# 0a. Optional own password instead of the random token generated on first run.
+#     MACCONTROL_TOKEN is accepted too, but it is written to the token file
+#     rather than exported: the LaunchAgent does not inherit this shell's
+#     environment, so an exported variable alone would never reach the server.
+CUSTOM_PASSWORD="${MACCONTROL_TOKEN:-}"
+ASK_PASSWORD=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --password|--token)     CUSTOM_PASSWORD="$2"; shift 2 ;;
+        --password=*|--token=*) CUSTOM_PASSWORD="${1#*=}"; shift ;;
+        --ask-password)         ASK_PASSWORD=1; shift ;;
+        -h|--help)
+            echo "Usage: install.sh [--password <own-password> | --ask-password]"
+            echo "  no option        keep the existing token, or generate a random one"
+            echo "  --password P     use P as the control password"
+            echo "  --ask-password   prompt for it (not echoed, not in shell history)"
+            exit 0 ;;
+        *) echo "✗ unknown argument: $1" >&2; exit 2 ;;
+    esac
+done
+
+# 0b. Set that password now, before the build: asking for it after a two-minute
+#     publish would leave the prompt waiting on an unattended install. The file
+#     survives step 2 — rsync excludes `token` from --delete.
+if [ "$ASK_PASSWORD" = 1 ] || [ -n "$CUSTOM_PASSWORD" ]; then
+    ./scripts/set-password.sh --no-restart --dir "$INSTALL_DIR" ${CUSTOM_PASSWORD:+"$CUSTOM_PASSWORD"}
+    echo ""
+fi
+
 # 0. Warn if there is no stable signing identity — without it, macOS resets the
 #    Accessibility grant and background-item approval on every publish.
 SIGN_IDENTITY="${MACCONTROL_SIGN_IDENTITY:-MacControl}"
@@ -87,7 +116,8 @@ for _ in $(seq 1 20); do
         echo "  Binary:  $INSTALL_DIR/MacControl"
         echo "  Plist:   $PLIST_DST"
         echo "  Logs:    $INSTALL_DIR/maccontrol.log  (errors: maccontrol.err.log)"
-        # The control token is generated on first run and stored next to the binary.
+        # The control token: your own password if you set one, otherwise the
+        # random one generated on first run. Both live next to the binary.
         TOKEN="$(cat "$INSTALL_DIR/token" 2>/dev/null || true)"
         IP="$(ipconfig getifaddr en0 2>/dev/null || echo localhost)"
         if [ -n "$TOKEN" ]; then

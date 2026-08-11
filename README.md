@@ -16,7 +16,7 @@ MacOS-Watch fixes that. It runs a tiny web server on your Mac; you open a page o
 - **Volume** — slider, ±5 steps, and mute
 - **Pairing QR code** — open the page on the Mac, scan it with the phone, done
 - **Starts automatically** at login and keeps running in the background
-- **Token protected** — a device without the token cannot control your Mac
+- **Token protected** — a device without the token cannot control your Mac; use the generated one or [set your own password](#use-your-own-password)
 
 Built with ASP.NET Core (.NET 8). Mouse and keyboard events are posted natively through CoreGraphics `CGEvent`, so pointer movement stays smooth instead of lagging behind your finger.
 
@@ -127,9 +127,33 @@ This name follows the Mac whatever its IP becomes. It resolves reliably on **iOS
 
 MacOS-Watch lets a browser move the mouse and press keys on your Mac. Treat it accordingly.
 
-- **A token is required.** Every `/api/*` request needs a shared secret. It is generated on first run, stored in `~/Applications/MacControl/token`, and never committed to git. Requests without it get `401`. Override it by setting `MACCONTROL_TOKEN` in the LaunchAgent plist.
+- **A token is required.** Every `/api/*` request needs a shared secret. It is generated on first run, stored in `~/Applications/MacControl/token`, and never committed to git. Requests without it get `401`.
 - **LAN only, plain HTTP.** There is no TLS and no user accounts. Run this on networks you trust — your home Wi-Fi, not café or shared public Wi-Fi.
 - **Rotate the token** by deleting `~/Applications/MacControl/token` and re-running `./scripts/install.sh`.
+
+### Use your own password
+
+The generated token is 32 random characters — safe, but impossible to type by hand. If you would rather have a password you can remember and type into the phone yourself:
+
+```bash
+./scripts/set-password.sh
+```
+
+It asks for the password (twice, not echoed), writes it, restarts the service, and prints the new pairing link. You can also pass it directly — `./scripts/set-password.sh my-couch-remote` — or set it during the install:
+
+```bash
+./scripts/install.sh --ask-password
+./scripts/install.sh --password my-couch-remote
+```
+
+Rules: at least 8 characters, and only letters, digits and `. _ ~ -`. The password travels inside the pairing URL and the QR code, so anything needing URL-escaping is rejected rather than left to break the link later.
+
+Two things to keep in mind:
+
+- **Every paired device has to pair again.** The phone stores the old token; open the new `?token=…` link once on each device.
+- **A password you can remember is a password someone can guess.** Anyone on your network who guesses it gets your mouse and keyboard. The server logs a warning for anything under 8 characters; it does not stop you.
+
+`MACCONTROL_TOKEN` in the environment also works, and takes precedence over the file. Note that the LaunchAgent does not inherit your shell's environment — to use it that way, add it to the `EnvironmentVariables` dict in `scripts/com.maccontrol.plist`. Setting `MACCONTROL_TOKEN` before running `install.sh` writes it to the token file instead, which is what you usually want.
 
 ---
 
@@ -141,6 +165,7 @@ MacOS-Watch lets a browser move the mouse and press keys on your Mac. Treat it a
 | `install.sh` | The main one: build, install, register the LaunchAgent, allow through the firewall, verify, print the phone link. |
 | `publish.sh` | Builds and signs the self-contained binary. Called by `install.sh`; you rarely run it directly. |
 | `status.sh` | Diagnoses the whole chain — service, socket, firewall, which devices actually reached the server, phone links, Accessibility, recent errors. |
+| `set-password.sh` | Replaces the random token with a password you choose, restarts the service, prints the new pairing link. |
 | `set-hostname.sh` | Sets the Mac's Bonjour name so `http://<name>.local:5050` works. Needs `sudo`. |
 | `uninstall.sh` | Stops the LaunchAgent and removes the installed files. |
 | `com.maccontrol.plist` | The LaunchAgent template. `install.sh` fills in absolute paths. Sets port 5050, start-at-login, and `ProcessType=Interactive` so the scheduler does not throttle the process and make the pointer stutter. |
