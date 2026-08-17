@@ -11,6 +11,9 @@ internal static class NativeInput
     [StructLayout(LayoutKind.Sequential)]
     public struct CGPoint { public double X, Y; public CGPoint(double x, double y) { X = x; Y = y; } }
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct CGRect { public double X, Y, Width, Height; }
+
     [DllImport(CG)] private static extern IntPtr CGEventCreate(IntPtr source);
     [DllImport(CG)] private static extern IntPtr CGEventCreateKeyboardEvent(IntPtr source, ushort virtualKey, bool keyDown);
     [DllImport(CG)] private static extern IntPtr CGEventCreateMouseEvent(IntPtr source, uint mouseType, CGPoint location, uint mouseButton);
@@ -21,6 +24,8 @@ internal static class NativeInput
     [DllImport(CG)] private static extern void CFRelease(IntPtr cf);
     [DllImport(CG)] private static extern int CGWarpMouseCursorPosition(CGPoint pt);
     [DllImport(CG)] private static extern int CGAssociateMouseAndMouseCursorPosition(int connected);
+    [DllImport(CG)] private static extern int CGGetActiveDisplayList(uint maxDisplays, [Out] uint[]? activeDisplays, out uint displayCount);
+    [DllImport(CG)] private static extern CGRect CGDisplayBounds(uint display);
 
     // --- Accessibility (TCC) ---------------------------------------------------
     // CGEvent posting silently does nothing until the binary is trusted for
@@ -96,10 +101,64 @@ internal static class NativeInput
         return ((int)p.X, (int)p.Y);
     }
 
+    // --- Display geometry ------------------------------------------------------
+    // The global coordinate space has the main display's top-left at (0,0); a
+    // display arranged to its left or above therefore has NEGATIVE coordinates.
+    // Clamping the target to 0 would have made those displays unreachable, so the
+    // cursor is instead kept inside the real union of the active displays.
+    private static CGRect[] _displays = Array.Empty<CGRect>();
+    private static DateTime _displaysAt = DateTime.MinValue;
+
+    // Re-read periodically rather than per move: a drag posts moves at ~30Hz, while
+    // displays are plugged in on a human timescale — a second of staleness at worst.
+    private static CGRect[] Displays()
+    {
+        if (DateTime.UtcNow - _displaysAt < TimeSpan.FromSeconds(1)) return _displays;
+
+        var list = new CGRect[0];
+        if (CGGetActiveDisplayList(0, null, out var count) == 0 && count > 0)
+        {
+            var ids = new uint[count];
+            if (CGGetActiveDisplayList(count, ids, out count) == 0)
+            {
+                list = new CGRect[count];
+                for (var i = 0; i < count; i++) list[i] = CGDisplayBounds(ids[i]);
+            }
+        }
+        _displays = list;
+        _displaysAt = DateTime.UtcNow;
+        return _displays;
+    }
+
+    /// <summary>
+    /// Keeps a target point on some display. A point already on one is returned as
+    /// is; otherwise it snaps to the nearest display, which is what lets the cursor
+    /// cross into a screen that is offset diagonally or only partially adjacent.
+    /// </summary>
+    private static CGPoint ClampToDisplays(double x, double y)
+    {
+        var displays = Displays();
+        if (displays.Length == 0) return new CGPoint(x, y); // no info: do not fight the OS
+
+        var best = new CGPoint(x, y);
+        var bestDist = double.MaxValue;
+        foreach (var b in displays)
+        {
+            // Right/bottom edges are exclusive, hence the 1px inset.
+            var cx = Math.Clamp(x, b.X, b.X + b.Width - 1);
+            var cy = Math.Clamp(y, b.Y, b.Y + b.Height - 1);
+            if (cx == x && cy == y) return new CGPoint(x, y);
+
+            var dist = (cx - x) * (cx - x) + (cy - y) * (cy - y);
+            if (dist < bestDist) { bestDist = dist; best = new CGPoint(cx, cy); }
+        }
+        return best;
+    }
+
     public static void MoveBy(int dx, int dy)
     {
         var (x, y) = GetMouse();
-        var pt = new CGPoint(Math.Max(0, x + dx), Math.Max(0, y + dy));
+        var pt = ClampToDisplays(x + dx, y + dy);
         // Warp positions the cursor; then post a moved event so apps under the cursor see it.
         CGAssociateMouseAndMouseCursorPosition(1);
         CGWarpMouseCursorPosition(pt);
